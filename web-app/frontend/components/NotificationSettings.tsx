@@ -38,15 +38,25 @@ export default function NotificationSettings() {
 
   const testMutation = useMutation({
     mutationFn: async (type: 'telegram' | 'discord' | 'email') => {
-      const res = await axios.post(`${API_URL}/api/notifications/test`, { type })
+      const payload: Record<string, string> = { type }
+      if (type === 'telegram') {
+        payload.token = config.telegram_token || ''
+        payload.chat_id = config.telegram_chat_id || ''
+      } else if (type === 'discord') {
+        payload.webhook_url = config.discord_webhook || ''
+      }
+      const res = await axios.post(`${API_URL}/api/notifications/test`, payload)
       return res.data
     },
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       if (data.success) {
-        alert('Test notification sent successfully!')
+        alert('✅ Test notificatie verstuurd!')
       } else {
-        alert(`Test failed: ${data.error}`)
+        alert(`❌ Test mislukt: ${data.error}`)
       }
+    },
+    onError: (err: any) => {
+      alert(`❌ Fout: ${err.response?.data?.detail || err.message}`)
     },
   })
 

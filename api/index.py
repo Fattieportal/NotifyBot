@@ -252,7 +252,36 @@ async def save_notification_config(data: Dict[str, Any]):
 
 @app.post("/api/notifications/test")
 async def test_notification(data: Dict[str, Any]):
-    return {"success": True, "message": "Test notification sent"}
+    import httpx
+    notification_type = data.get("type", "telegram")
+
+    if notification_type == "telegram":
+        token = data.get("token") or data.get("telegram_token")
+        chat_id = data.get("chat_id") or data.get("telegram_chat_id")
+
+        if not token or not chat_id:
+            raise HTTPException(status_code=400, detail="Bot Token en Chat ID zijn verplicht")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    f"https://api.telegram.org/bot{token}/sendMessage",
+                    json={
+                        "chat_id": chat_id,
+                        "text": "✅ <b>Test notificatie van Notify Bot!</b>\n\nJe Telegram notificaties werken correct.",
+                        "parse_mode": "HTML",
+                    },
+                    timeout=10,
+                )
+            result = resp.json()
+            if result.get("ok"):
+                return {"success": True, "message": "Test bericht verstuurd naar Telegram!"}
+            else:
+                return {"success": False, "error": result.get("description", "Onbekende fout van Telegram")}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    return {"success": False, "error": f"Notification type '{notification_type}' nog niet ondersteund"}
 
 
 handler = Mangum(app, lifespan="off")
