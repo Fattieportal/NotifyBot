@@ -2,6 +2,9 @@
 Facebook Marketplace Scraper - VPS versie
 Draait elke minuut via cron, gebruikt Playwright met een opgeslagen sessie.
 Schrijft naar dezelfde Supabase database als de Vercel bot.
+
+Proxy instelling (optioneel): zet PROXY_SERVER in .env om datacenter-IP blokkade te omzeilen.
+Bijvoorbeeld: PROXY_SERVER=socks5://user:pass@host:port
 """
 
 import asyncio
@@ -17,6 +20,8 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 from supabase import create_client
 
 load_dotenv()
+
+PROXY_SERVER = os.environ.get("PROXY_SERVER")  # optioneel, bv. socks5://user:pass@host:port
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_ANON_KEY = os.environ["SUPABASE_ANON_KEY"]
@@ -247,26 +252,38 @@ async def run_scraper():
 
     async with async_playwright() as p:
         # Gebruik opgeslagen sessie als die bestaat
-        browser = await p.chromium.launch(headless=True, args=[
+        launch_args = [
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--disable-blink-features=AutomationControlled",
-        ])
+        ]
+        proxy_config = {"server": PROXY_SERVER} if PROXY_SERVER else None
+        if PROXY_SERVER:
+            print(f"[proxy] Gebruikt proxy: {PROXY_SERVER.split('@')[-1]}")
+
+        browser = await p.chromium.launch(
+            headless=True,
+            args=launch_args,
+            proxy=proxy_config,
+        )
+
+        context_kwargs = {
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "viewport": {"width": 1280, "height": 800},
+            "locale": "nl-NL",
+            "timezone_id": "Europe/Amsterdam",
+        }
 
         if SESSION_FILE.exists():
             print("[sessie] Opgeslagen sessie laden...")
             storage_state = json.loads(SESSION_FILE.read_text())
             context = await browser.new_context(
                 storage_state=storage_state,
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 800},
+                **context_kwargs,
             )
         else:
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                viewport={"width": 1280, "height": 800},
-            )
+            context = await browser.new_context(**context_kwargs)
 
         page = await context.new_page()
 
@@ -281,6 +298,9 @@ async def run_scraper():
 
         # Scrape listings
         listings = await scrape(page, config)
+
+        # Sla sessie altijd op na succesvolle scrape (houdt cookies vers)
+        await save_session(context)
         await browser.close()
 
     # Verwerk nieuwe listings
@@ -302,9 +322,16 @@ async def run_scraper():
 async def interactive_login():
     """Eenmalige handmatige login met zichtbare browser (voor 2FA etc.)"""
     print("[login] Browser openen voor handmatige login...")
+    proxy_config = {"server": PROXY_SERVER} if PROXY_SERVER else None
+    if PROXY_SERVER:
+        print(f"[proxy] Gebruikt proxy: {PROXY_SERVER.split('@')[-1]}")
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
-        context = await browser.new_context(viewport={"width": 1280, "height": 800})
+        browser = await p.chromium.launch(headless=False, proxy=proxy_config)
+        context = await browser.new_context(
+            viewport={"width": 1280, "height": 800},
+            locale="nl-NL",
+            timezone_id="Europe/Amsterdam",
+        )
         page = await context.new_page()
         await page.goto("https://www.facebook.com/login")
         print("[login] Log in op Facebook in de browser die net is geopend.")
