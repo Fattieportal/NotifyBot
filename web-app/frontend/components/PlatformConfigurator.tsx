@@ -31,7 +31,7 @@ export default function PlatformConfigurator() {
     queryKey: ['platforms'],
     queryFn: async () => {
       const res = await axios.get(`${API_URL}/api/platforms`)
-      return res.data as Record<string, PlatformSchema>
+      return res.data.platforms as Record<string, PlatformSchema>
     },
   })
 
