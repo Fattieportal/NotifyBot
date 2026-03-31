@@ -245,6 +245,18 @@ async def save_config(data: Dict[str, Any]):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.delete("/api/listings/clear")
+async def clear_listings():
+    """Verwijder alle listings uit de database (reset voor nieuwe zoekopdracht)"""
+    try:
+        sb = get_supabase()
+        # Delete all rows by filtering on a condition that's always true
+        result = sb.table("listings").delete().gte("id", 0).execute()
+        return {"success": True, "message": "Alle listings verwijderd"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/scrape/test")
 async def test_scrape(data: Dict[str, Any]):
     return {
