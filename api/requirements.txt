@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+python-telegram-bot
+discord-webhook
+beautifulsoup4
+requests
+pydantic
+python-dotenv

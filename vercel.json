@@ -1,27 +1,17 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "web-app/frontend/package.json",
-      "use": "@vercel/next"
-    },
-    {
-      "src": "web-app/api/main.py",
-      "use": "@vercel/python"
+  "buildCommand": "cd web-app/frontend && npm install && npm run build",
+  "outputDirectory": "web-app/frontend/.next",
+  "installCommand": "cd web-app/frontend && npm install",
+  "framework": "nextjs",
+  "functions": {
+    "api/index.py": {
+      "runtime": "python3.9"
     }
-  ],
+  },
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "web-app/api/main.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "web-app/frontend/$1"
+      "dest": "/api/index.py"
     }
-  ],
-  "env": {
-    "TELEGRAM_BOT_TOKEN": "@telegram_bot_token",
-    "TELEGRAM_CHAT_ID": "@telegram_chat_id"
-  }
+  ]
 }
