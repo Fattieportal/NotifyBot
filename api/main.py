@@ -82,7 +82,7 @@ PLATFORM_FIELDS = {
 
 @app.get("/")
 async def root():
-    return {"message": "Auto Notify Bot API", "version": "1.0.0", "status": "running"}
+    return {"message": "Auto Notify Bot API", "version": "2.0.0-FILTER-FIX", "status": "running"}
 
 
 FALLBACK_PLATFORMS = [
