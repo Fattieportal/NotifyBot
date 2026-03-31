@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { API_URL } from '@/lib/api'
@@ -31,31 +31,32 @@ export default function PlatformConfigurator() {
     queryKey: ['platforms'],
     queryFn: async () => {
       const res = await axios.get(`${API_URL}/api/platforms`)
-      console.log('API Response:', res.data)
-      // Handle both old format {platforms: {...}} and new format {...}
       let platformData = res.data.platforms || res.data
-      console.log('Platform Data (raw):', platformData)
-      console.log('Is Array?:', Array.isArray(platformData))
       
       // If it's an array, convert to object with platform keys
       if (Array.isArray(platformData)) {
-        console.log('Converting array to object...')
-        console.log('Array items:', platformData)
         const obj: Record<string, PlatformSchema> = {}
         platformData.forEach((platform: any, index: number) => {
-          console.log(`Platform ${index}:`, platform)
-          // Use the 'id' field as key if available, otherwise generate from name
           const key = platform.id || platform.name?.toLowerCase().replace(/\s+/g, '_').replace(/\./g, '') || `platform_${index}`
-          console.log(`Generated key: ${key}`)
           obj[key] = platform
         })
         platformData = obj
-        console.log('Converted to object:', platformData)
       }
       
       return platformData as Record<string, PlatformSchema>
     },
   })
+
+  // Pre-fill form with saved config when switching platforms
+  useEffect(() => {
+    const saved = (schemas?.[selectedPlatform] as any)?.config
+    if (saved && Object.keys(saved).length > 0) {
+      setFormData(saved)
+    } else {
+      setFormData({})
+    }
+    setTestResults(null)
+  }, [selectedPlatform, schemas])
 
   // Test scrape mutation
   const testMutation = useMutation({
@@ -122,8 +123,6 @@ export default function PlatformConfigurator() {
                 key={key}
                 onClick={() => {
                   setSelectedPlatform(key)
-                  setFormData({})
-                  setTestResults(null)
                 }}
                 className={`
                   w-full text-left px-4 py-3 rounded-lg border-2 transition-all
@@ -173,7 +172,7 @@ export default function PlatformConfigurator() {
                     min={field.min}
                     max={field.max}
                     value={formData[field.name] || ''}
-                    onChange={(e) => handleFieldChange(field.name, parseInt(e.target.value))}
+                    onChange={(e) => handleFieldChange(field.name, e.target.value ? parseInt(e.target.value) : undefined)}
                   />
                 )}
 
