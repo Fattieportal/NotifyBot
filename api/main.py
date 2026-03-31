@@ -663,6 +663,97 @@ async def scrape_mobile_de(criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
     return listings
 
 
+async def scrape_facebook_marketplace(criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Scrape Facebook Marketplace via Apify API (apify/facebook-marketplace-scraper)"""
+    apify_token = os.environ.get("APIFY_API_TOKEN")
+    if not apify_token:
+        raise Exception("APIFY_API_TOKEN niet ingesteld in Vercel env vars")
+
+    keywords = criteria.get("keywords", "auto")
+    location = criteria.get("location", "netherlands")
+    price_max = criteria.get("price_max")
+    price_min = criteria.get("price_min")
+
+    # Bouw de Facebook Marketplace search URL
+    search_url = f"https://www.facebook.com/marketplace/{location.lower().replace(' ', '')}/search/?query={keywords.replace(' ', '%20')}"
+    if price_max:
+        search_url += f"&maxPrice={int(price_max)}"
+    if price_min:
+        search_url += f"&minPrice={int(price_min)}"
+
+    run_input = {
+        "startUrls": [{"url": search_url}],
+        "maxItems": 30,
+        "proxy": {"useApifyProxy": True},
+    }
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        # Start de Apify actor run
+        start_resp = await client.post(
+            "https://api.apify.com/v2/acts/apify~facebook-marketplace-scraper/runs",
+            params={"token": apify_token},
+            json=run_input,
+        )
+        start_resp.raise_for_status()
+        run_data = start_resp.json()
+        run_id = run_data["data"]["id"]
+
+        # Poll tot de run klaar is (max 90 seconden)
+        for _ in range(18):
+            await __import__("asyncio").sleep(5)
+            status_resp = await client.get(
+                f"https://api.apify.com/v2/acts/apify~facebook-marketplace-scraper/runs/{run_id}",
+                params={"token": apify_token},
+            )
+            status_resp.raise_for_status()
+            status = status_resp.json()["data"]["status"]
+            if status == "SUCCEEDED":
+                break
+            elif status in ("FAILED", "ABORTED", "TIMED-OUT"):
+                raise Exception(f"Apify run mislukt: {status}")
+
+        # Haal resultaten op
+        dataset_id = status_resp.json()["data"]["defaultDatasetId"]
+        items_resp = await client.get(
+            f"https://api.apify.com/v2/datasets/{dataset_id}/items",
+            params={"token": apify_token, "format": "json"},
+        )
+        items_resp.raise_for_status()
+        items = items_resp.json()
+
+    listings = []
+    for item in items:
+        listing_id = str(item.get("id", ""))
+        if not listing_id:
+            continue
+
+        title = item.get("marketplace_listing_title") or item.get("custom_title") or ""
+        price_raw = item.get("listing_price", {}).get("amount", "0") or "0"
+        try:
+            price = float(str(price_raw).replace(",", "."))
+        except ValueError:
+            price = 0.0
+
+        url = item.get("listingUrl") or f"https://www.facebook.com/marketplace/item/{listing_id}"
+        location_data = item.get("location", {}).get("reverse_geocode", {})
+        loc = location_data.get("city", "") or location_data.get("state", "")
+        image = item.get("primary_listing_photo", {}).get("image", {}).get("uri", "")
+
+        listings.append({
+            "listing_id": f"fb_{listing_id}",
+            "platform": "facebook",
+            "title": title,
+            "price": price,
+            "year": None,   # Facebook Marketplace geeft geen bouwjaar terug
+            "mileage": None,
+            "url": url,
+            "location": loc,
+            "image_url": image,
+        })
+
+    return listings
+
+
 def passes_filter(listing: Dict[str, Any], config: Dict[str, Any]) -> bool:
     """Controleer of een listing voldoet aan alle ingestelde criteria."""
     price = listing.get("price") or 0
@@ -760,6 +851,8 @@ async def cron_scrape(request: Request):
                 listings = await scrape_ebay_kleinanzeigen(config)
             elif platform_id == "mobile_de":
                 listings = await scrape_mobile_de(config)
+            elif platform_id == "facebook":
+                listings = await scrape_facebook_marketplace(config)
             else:
                 continue  # Onbekend platform, overslaan
 
