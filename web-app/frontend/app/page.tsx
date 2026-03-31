@@ -11,7 +11,8 @@ import NotificationSettings from '@/components/NotificationSettings'
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'configure' | 'listings' | 'notifications'>('configure')
   
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+  // Remove trailing slash from API URL to avoid double slashes
+  const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '')
 
   // Fetch stats
   const { data: stats, isLoading: statsLoading } = useQuery({
