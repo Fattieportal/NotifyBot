@@ -225,8 +225,16 @@ async def save_config(data: Dict[str, Any]):
         config = data.get("config", {})
         enabled = data.get("enabled", True)
 
+        platform_names = {
+            "marktplaats": "Marktplaats.nl",
+            "autoscout24": "AutoScout24",
+            "mobile_de": "Mobile.de",
+            "facebook": "Facebook Marketplace",
+            "ebay_kleinanzeigen": "eBay Kleinanzeigen",
+        }
         sb.table("platforms").upsert({
             "id": platform_id,
+            "name": platform_names.get(platform_id, platform_id),
             "config": config,
             "enabled": enabled,
             "updated_at": datetime.now().isoformat(),
