@@ -44,8 +44,8 @@ export default function PlatformConfigurator() {
         const obj: Record<string, PlatformSchema> = {}
         platformData.forEach((platform: any, index: number) => {
           console.log(`Platform ${index}:`, platform)
-          // Try to get key from platform name or use index
-          const key = platform.name?.toLowerCase().replace(/\s+/g, '_').replace(/\./g, '') || `platform_${index}`
+          // Use the 'id' field as key if available, otherwise generate from name
+          const key = platform.id || platform.name?.toLowerCase().replace(/\s+/g, '_').replace(/\./g, '') || `platform_${index}`
           console.log(`Generated key: ${key}`)
           obj[key] = platform
         })
