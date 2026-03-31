@@ -85,8 +85,8 @@ export default function PlatformConfigurator() {
     saveMutation.mutate(formData)
   }
 
-  if (!schemas) {
-    return <div className="text-center py-8">Loading platforms...</div>
+  if (!schemas || typeof schemas !== 'object' || Array.isArray(schemas)) {
+    return <div className="text-center py-8">Loading platforms... {schemas ? `(Got: ${typeof schemas})` : ''}</div>
   }
 
   return (
