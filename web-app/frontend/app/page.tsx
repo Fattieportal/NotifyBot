@@ -10,12 +10,14 @@ import NotificationSettings from '@/components/NotificationSettings'
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'configure' | 'listings' | 'notifications'>('configure')
+  
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
   // Fetch stats
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['stats'],
     queryFn: async () => {
-      const res = await axios.get('/api/stats')
+      const res = await axios.get(`${apiUrl}/api/stats`)
       return res.data
     },
     refetchInterval: 30000, // Refresh every 30 seconds
