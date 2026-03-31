@@ -1,4 +1,4 @@
-// Backend draait op de VPS — via NEXT_PUBLIC_API_URL env var in Vercel
+// Backend API op Vercel — via NEXT_PUBLIC_API_URL env var overschrijfbaar
 const envApiUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '')
 
 export const API_URL =
@@ -6,4 +6,4 @@ export const API_URL =
   (typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? 'http://localhost:8000'
-    : 'http://65.21.145.110:8000')
+    : 'https://notify-bot-94oj.vercel.app')
