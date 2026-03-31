@@ -18,14 +18,79 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mock data for development
-MOCK_PLATFORMS = [
-    {"id": "marktplaats", "name": "Marktplaats", "enabled": True},
-    {"id": "autoscout24", "name": "AutoScout24", "enabled": True},
-    {"id": "mobile_de", "name": "Mobile.de", "enabled": True},
-    {"id": "facebook", "name": "Facebook Marketplace", "enabled": False},
-    {"id": "ebay_kleinanzeigen", "name": "eBay Kleinanzeigen", "enabled": False},
-]
+# Full platform schemas with fields
+PLATFORM_SCHEMAS = {
+    "marktplaats": {
+        "id": "marktplaats",
+        "name": "Marktplaats.nl",
+        "enabled": True,
+        "fields": [
+            {"name": "keywords", "type": "text", "label": "Zoekwoorden", "required": True, "placeholder": "bijv. BMW 3 serie"},
+            {"name": "price_min", "type": "number", "label": "Min Prijs (€)", "required": False},
+            {"name": "price_max", "type": "number", "label": "Max Prijs (€)", "required": False},
+            {"name": "year_min", "type": "number", "label": "Min Bouwjaar", "required": False},
+            {"name": "year_max", "type": "number", "label": "Max Bouwjaar", "required": False},
+            {"name": "mileage_max", "type": "number", "label": "Max Kilometers", "required": False},
+            {"name": "postcode", "type": "text", "label": "Postcode", "required": False, "placeholder": "bijv. 1234AB"},
+            {"name": "distance_km", "type": "number", "label": "Afstand (km)", "required": False},
+        ]
+    },
+    "autoscout24": {
+        "id": "autoscout24",
+        "name": "AutoScout24",
+        "enabled": True,
+        "fields": [
+            {"name": "make", "type": "select", "label": "Merk", "required": True,
+             "options": ["BMW", "Audi", "Mercedes-Benz", "Volkswagen", "Toyota", "Honda", "Ford", "Opel"]},
+            {"name": "model", "type": "text", "label": "Model", "required": False, "placeholder": "bijv. 3 Serie"},
+            {"name": "price_min", "type": "number", "label": "Min Prijs (€)", "required": False},
+            {"name": "price_max", "type": "number", "label": "Max Prijs (€)", "required": False},
+            {"name": "year_min", "type": "number", "label": "Min Bouwjaar", "required": False},
+            {"name": "year_max", "type": "number", "label": "Max Bouwjaar", "required": False},
+            {"name": "mileage_max", "type": "number", "label": "Max Kilometers", "required": False},
+            {"name": "fuel_type", "type": "select", "label": "Brandstof", "required": False,
+             "options": ["Diesel", "Petrol", "Electric", "Hybrid"]},
+        ]
+    },
+    "mobile_de": {
+        "id": "mobile_de",
+        "name": "Mobile.de",
+        "enabled": True,
+        "fields": [
+            {"name": "make", "type": "text", "label": "Merk", "required": True, "placeholder": "bijv. BMW"},
+            {"name": "model", "type": "text", "label": "Model", "required": False},
+            {"name": "price_min", "type": "number", "label": "Min Preis (€)", "required": False},
+            {"name": "price_max", "type": "number", "label": "Max Preis (€)", "required": False},
+            {"name": "year_min", "type": "number", "label": "Min Baujahr", "required": False},
+            {"name": "mileage_max", "type": "number", "label": "Max Kilometerstand", "required": False},
+            {"name": "zip_code", "type": "text", "label": "Postleitzahl (DE)", "required": False},
+            {"name": "radius_km", "type": "number", "label": "Umkreis (km)", "required": False},
+        ]
+    },
+    "facebook": {
+        "id": "facebook",
+        "name": "Facebook Marketplace",
+        "enabled": False,
+        "fields": [
+            {"name": "keywords", "type": "text", "label": "Zoekwoorden", "required": True},
+            {"name": "price_max", "type": "number", "label": "Max Prijs (€)", "required": False},
+            {"name": "location", "type": "text", "label": "Locatie", "required": False},
+            {"name": "radius_km", "type": "number", "label": "Afstand (km)", "required": False},
+        ]
+    },
+    "ebay_kleinanzeigen": {
+        "id": "ebay_kleinanzeigen",
+        "name": "eBay Kleinanzeigen",
+        "enabled": False,
+        "fields": [
+            {"name": "keywords", "type": "text", "label": "Suchbegriffe", "required": True},
+            {"name": "price_min", "type": "number", "label": "Min Preis (€)", "required": False},
+            {"name": "price_max", "type": "number", "label": "Max Preis (€)", "required": False},
+            {"name": "zip_code", "type": "text", "label": "Postleitzahl", "required": False},
+            {"name": "radius_km", "type": "number", "label": "Umkreis (km)", "required": False},
+        ]
+    },
+}
 
 MOCK_STATS = {
     "total_listings": 142,
@@ -60,8 +125,8 @@ async def health():
 
 @app.get("/api/platforms")
 async def get_platforms():
-    """Get all available platforms"""
-    return {"platforms": MOCK_PLATFORMS}
+    """Get all available platforms with full schemas"""
+    return {"platforms": list(PLATFORM_SCHEMAS.values())}
 
 
 @app.get("/api/platforms/{platform_id}/config")
