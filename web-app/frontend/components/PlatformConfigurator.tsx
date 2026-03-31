@@ -33,8 +33,23 @@ export default function PlatformConfigurator() {
       const res = await axios.get(`${API_URL}/api/platforms`)
       console.log('API Response:', res.data)
       // Handle both old format {platforms: {...}} and new format {...}
-      const platformData = res.data.platforms || res.data
-      console.log('Platform Data:', platformData)
+      let platformData = res.data.platforms || res.data
+      console.log('Platform Data (raw):', platformData)
+      console.log('Is Array?:', Array.isArray(platformData))
+      
+      // If it's an array, convert to object with platform keys
+      if (Array.isArray(platformData)) {
+        console.log('Converting array to object...')
+        const obj: Record<string, PlatformSchema> = {}
+        platformData.forEach((platform: any, index: number) => {
+          // Try to get key from platform name or use index
+          const key = platform.name?.toLowerCase().replace(/\s+/g, '_') || `platform_${index}`
+          obj[key] = platform
+        })
+        platformData = obj
+        console.log('Converted to object:', platformData)
+      }
+      
       return platformData as Record<string, PlatformSchema>
     },
   })
