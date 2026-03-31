@@ -112,6 +112,7 @@ async def debug():
     url = os.environ.get("SUPABASE_URL", "")
     key = os.environ.get("SUPABASE_ANON_KEY", "")
     return {
+        "version": "b67ed24",
         "supabase_url_set": bool(url),
         "supabase_url_prefix": url[:30] if url else None,
         "supabase_key_set": bool(key),
