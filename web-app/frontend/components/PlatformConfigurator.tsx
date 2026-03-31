@@ -32,8 +32,7 @@ export default function PlatformConfigurator() {
     queryFn: async () => {
       const res = await axios.get(`${API_URL}/api/platforms`)
       console.log('API Response:', res.data)
-      console.log('Platforms:', res.data.platforms)
-      return res.data.platforms as Record<string, PlatformSchema>
+      return res.data as Record<string, PlatformSchema>
     },
   })
 

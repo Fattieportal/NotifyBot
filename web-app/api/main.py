@@ -131,9 +131,7 @@ async def health_check():
 @app.get("/api/platforms")
 async def get_platforms():
     """Get all platform schemas for dynamic form generation"""
-    return {
-        "platforms": PLATFORM_SCHEMAS
-    }
+    return PLATFORM_SCHEMAS
 
 @app.get("/api/platforms/{platform_name}/schema")
 async def get_platform_schema(platform_name: str):
