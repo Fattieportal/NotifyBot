@@ -1,8 +1,9 @@
-﻿from fastapi import FastAPI, HTTPException
+﻿from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime, date
 import os
+import httpx
 from mangum import Mangum
 from supabase import create_client, Client
 
@@ -252,7 +253,6 @@ async def save_notification_config(data: Dict[str, Any]):
 
 @app.post("/api/notifications/test")
 async def test_notification(data: Dict[str, Any]):
-    import httpx
     notification_type = data.get("type", "telegram")
 
     if notification_type == "telegram":
@@ -282,6 +282,173 @@ async def test_notification(data: Dict[str, Any]):
             return {"success": False, "error": str(e)}
 
     return {"success": False, "error": f"Notification type '{notification_type}' nog niet ondersteund"}
+
+
+# ── Cron / Scraping ───────────────────────────────────────────
+
+async def scrape_marktplaats(criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Scrape Marktplaats via hun interne search API"""
+    params = {
+        "l1CategoryId": "91",   # Auto's
+        "sortBy": "SORT_INDEX",
+        "sortOrder": "DECREASING",
+        "searchInTitleAndDescription": "true",
+        "limit": "30",
+    }
+    if criteria.get("keywords"):
+        params["query"] = criteria["keywords"]
+    if criteria.get("price_min"):
+        params["priceFrom"] = str(int(criteria["price_min"]))
+    if criteria.get("price_max"):
+        params["priceTo"] = str(int(criteria["price_max"]))
+    if criteria.get("year_min"):
+        params["constructionYearFrom"] = str(criteria["year_min"])
+    if criteria.get("year_max"):
+        params["constructionYearTo"] = str(criteria["year_max"])
+    if criteria.get("mileage_max"):
+        params["mileageTo"] = str(int(criteria["mileage_max"]))
+    if criteria.get("postcode"):
+        params["postcode"] = criteria["postcode"]
+    if criteria.get("distance_km"):
+        params["distanceMeters"] = str(int(criteria["distance_km"]) * 1000)
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.get(
+            "https://www.marktplaats.nl/lrp/api/search",
+            params=params,
+            headers=headers,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    listings = []
+    for item in data.get("listings", []):
+        price_info = item.get("priceInfo", {})
+        price_cents = price_info.get("priceCents", 0)
+        price = price_cents / 100 if price_cents else 0
+
+        listing_id = str(item.get("itemId", ""))
+        title = item.get("title", "")
+        url = "https://www.marktplaats.nl" + item.get("vipUrl", "")
+        location = item.get("location", {}).get("cityName", "")
+        image_url = ""
+        pictures = item.get("pictures", [])
+        if pictures:
+            image_url = pictures[0].get("mediumUrl", "") or pictures[0].get("extraExtraLargeUrl", "")
+
+        listings.append({
+            "listing_id": listing_id,
+            "platform": "marktplaats",
+            "title": title,
+            "price": price,
+            "url": url,
+            "location": location,
+            "image_url": image_url,
+        })
+
+    return listings
+
+
+async def send_telegram_notification(token: str, chat_id: str, listing: Dict[str, Any]):
+    """Stuur een Telegram notificatie voor een nieuwe advertentie"""
+    price_str = f"€{listing['price']:,.0f}" if listing.get("price") else "Prijs onbekend"
+    location_str = f"📍 {listing['location']}" if listing.get("location") else ""
+
+    text = (
+        f"🚗 <b>Nieuwe advertentie gevonden!</b>\n\n"
+        f"<b>{listing['title']}</b>\n"
+        f"💶 {price_str}\n"
+        f"{location_str}\n\n"
+        f"🔗 <a href='{listing['url']}'>Bekijk advertentie</a>"
+    )
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        await client.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": False},
+        )
+
+
+@app.get("/api/cron/scrape")
+@app.post("/api/cron/scrape")
+async def cron_scrape(request: Request):
+    """
+    Vercel cron job - draait elke 15 minuten automatisch.
+    Scrapet actieve platforms en stuurt Telegram notificaties voor nieuwe advertenties.
+    """
+    results = {"scraped": 0, "new": 0, "notified": 0, "errors": []}
+
+    # Haal Telegram credentials op uit env vars
+    tg_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    tg_chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+
+    if not tg_token or not tg_chat_id:
+        return {"success": False, "error": "TELEGRAM_BOT_TOKEN en TELEGRAM_CHAT_ID niet ingesteld in Vercel env vars"}
+
+    # Haal actieve platforms op uit Supabase
+    sb_url = os.environ.get("SUPABASE_URL")
+    sb_key = os.environ.get("SUPABASE_ANON_KEY")
+
+    if not sb_url or not sb_key:
+        return {"success": False, "error": "Supabase niet geconfigureerd"}
+
+    try:
+        sb = get_supabase()
+        platforms_result = sb.table("platforms").select("*").eq("enabled", True).execute()
+        platforms = platforms_result.data
+    except Exception as e:
+        return {"success": False, "error": f"Supabase fout: {str(e)}"}
+
+    for platform in platforms:
+        platform_id = platform.get("id")
+        config = platform.get("config") or {}
+
+        if not config:
+            continue  # Geen criteria ingesteld, overslaan
+
+        try:
+            if platform_id == "marktplaats":
+                listings = await scrape_marktplaats(config)
+                results["scraped"] += len(listings)
+
+                for listing in listings:
+                    listing_id = listing["listing_id"]
+                    if not listing_id:
+                        continue
+
+                    # Check of advertentie al bekend is in Supabase
+                    existing = sb.table("listings").select("id").eq("listing_id", listing_id).execute()
+                    if existing.data:
+                        continue  # Al bekend, overslaan
+
+                    # Sla op in Supabase
+                    sb.table("listings").insert({
+                        "listing_id": listing_id,
+                        "platform": "marktplaats",
+                        "title": listing.get("title", ""),
+                        "price": listing.get("price"),
+                        "url": listing.get("url", ""),
+                        "location": listing.get("location", ""),
+                        "image_url": listing.get("image_url", ""),
+                        "created_at": datetime.now().isoformat(),
+                    }).execute()
+                    results["new"] += 1
+
+                    # Stuur Telegram notificatie
+                    await send_telegram_notification(tg_token, tg_chat_id, listing)
+                    results["notified"] += 1
+
+        except Exception as e:
+            results["errors"].append(f"{platform_id}: {str(e)}")
+
+    results["success"] = True
+    results["timestamp"] = datetime.now().isoformat()
+    return results
 
 
 handler = Mangum(app, lifespan="off")
