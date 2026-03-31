@@ -1,0 +1,35 @@
+# Core dependencies
+requests==2.31.0
+beautifulsoup4==4.12.3
+lxml==5.1.0
+
+# Browser automation (voor Facebook & anti-detection)
+playwright==1.42.0
+selenium==4.18.1
+
+# Database
+sqlalchemy==2.0.27
+
+# Configuration
+pyyaml==6.0.1
+python-dotenv==1.0.1
+
+# Scheduling
+schedule==1.2.1
+
+# Notificaties
+python-telegram-bot==20.8
+discord-webhook==1.3.1
+sendgrid==6.11.0
+
+# Utilities
+colorlog==6.8.2
+tenacity==8.2.3  # Retry logic
+fake-useragent==1.4.0
+feedparser==6.0.11  # Voor RSS feeds
+
+# Rate limiting
+ratelimit==2.2.1
+
+# Data processing
+python-dateutil==2.9.0

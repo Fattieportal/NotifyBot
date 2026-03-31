@@ -1,0 +1,116 @@
+# Multi-Platform Notification Bot Configuration
+
+# Globale instellingen
+global:
+  check_interval_minutes: 15  # Hoe vaak scrapen (15 min aanbevolen)
+  max_retries: 3
+  request_timeout: 30
+  use_proxy: false
+  # proxy_url: "http://your-proxy:8080"  # Optioneel
+
+# Database
+database:
+  path: "data/listings.db"
+  cleanup_days: 30  # Verwijder oude entries na X dagen
+
+# Platform configuraties
+platforms:
+  marktplaats:
+    enabled: true
+    check_interval_minutes: 15
+    criteria:
+      keywords: "bmw 320d"  # Of lijst: ["bmw 320d", "audi a4"]
+      category: "auto"
+      price_min: 5000
+      price_max: 15000
+      year_min: 2015
+      year_max: 2022
+      mileage_max: 150000
+      # postcode: "1000"  # Optioneel
+      # distance_km: 50   # Optioneel
+    
+  autoscout:
+    enabled: true
+    check_interval_minutes: 15
+    criteria:
+      make: "BMW"  # Merk
+      model: "3 Series"
+      price_min: 5000
+      price_max: 15000
+      year_min: 2015
+      year_max: 2022
+      mileage_max: 150000
+      fuel_type: "Diesel"  # Diesel, Petrol, Electric, Hybrid
+      # country: "NL"  # NL, DE, BE
+    
+  mobile_de:
+    enabled: true
+    check_interval_minutes: 15
+    criteria:
+      make: "BMW"
+      model: "320"
+      price_min: 5000
+      price_max: 15000
+      year_min: 2015
+      mileage_max: 150000
+      # zip_code: "10115"  # Duitse postcode
+      # radius_km: 100
+    
+  facebook:
+    enabled: false  # Standaard uit - vereist login
+    check_interval_minutes: 20  # Langzamer vanwege anti-bot
+    credentials:
+      email: "YOUR_EMAIL"
+      password: "YOUR_PASSWORD"  # Gebruik .env file in productie!
+    criteria:
+      query: "BMW 320d"
+      price_min: 5000
+      price_max: 15000
+      location: "Amsterdam"
+      radius_km: 50
+    
+  ebay_kleinanzeigen:
+    enabled: true
+    check_interval_minutes: 10  # RSS is snel en betrouwbaar
+    criteria:
+      keywords: "bmw 320d"
+      category: "216"  # 216 = Auto's
+      price_min: 5000
+      price_max: 15000
+      # zip_code: "10115"
+      # radius_km: 100
+
+# Notificatie instellingen
+notifications:
+  telegram:
+    enabled: true
+    bot_token: "YOUR_BOT_TOKEN_HERE"  # Van @BotFather
+    chat_id: "YOUR_CHAT_ID_HERE"      # Je chat ID
+    include_image: true
+    
+  discord:
+    enabled: false
+    webhook_url: "YOUR_DISCORD_WEBHOOK_URL"
+    
+  email:
+    enabled: false
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    sender_email: "your-email@gmail.com"
+    sender_password: "YOUR_APP_PASSWORD"
+    recipient_email: "client-email@example.com"
+    use_tls: true
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "logs/bot.log"
+  console_output: true
+  
+# Anti-detection instellingen
+anti_detection:
+  random_delay_min: 3  # Minimale delay tussen requests (seconden)
+  random_delay_max: 10  # Maximale delay
+  rotate_user_agents: true
+  save_cookies: true
+  headless_browser: true  # Voor Facebook
