@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "web-app/frontend/package.json",
+      "use": "@vercel/next"
+    },
+    {
+      "src": "web-app/api/main.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "web-app/api/main.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "web-app/frontend/$1"
+    }
+  ],
+  "env": {
+    "TELEGRAM_BOT_TOKEN": "@telegram_bot_token",
+    "TELEGRAM_CHAT_ID": "@telegram_chat_id"
+  }
+}
