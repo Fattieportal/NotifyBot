@@ -148,7 +148,7 @@ export default function PlatformConfigurator() {
           </h3>
 
           <form className="space-y-6">
-            {currentSchema?.fields.map((field) => (
+            {currentSchema?.fields?.map((field) => (
               <div key={field.name}>
                 <label className="label">
                   {field.label}
