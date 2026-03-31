@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import axios from 'axios'
 import { API_URL } from '@/lib/api'
@@ -19,12 +20,68 @@ interface NotificationConfig {
   email_to?: string
 }
 
+interface ChannelProps {
+  icon: string
+  title: string
+  description: string
+  enabled: boolean
+  onToggle: (v: boolean) => void
+  children?: ReactNode
+  onTest: () => void
+  testPending: boolean
+}
+
+function Channel({ icon, title, description, enabled, onToggle, children, onTest, testPending }: ChannelProps) {
+  return (
+    <div className={`rounded-2xl border transition-all duration-200 ${enabled ? 'border-white/15 bg-white/5' : 'border-white/5 bg-white/[0.02]'}`}>
+      <div className="flex items-center justify-between p-5">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{icon}</span>
+          <div>
+            <h4 className="font-semibold text-white text-sm">{title}</h4>
+            <p className="text-xs text-white/40">{description}</p>
+          </div>
+        </div>
+        {/* Toggle */}
+        <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => onToggle(e.target.checked)}
+            className="sr-only peer"
+          />
+          <div className="w-11 h-6 bg-white/10 rounded-full peer peer-checked:bg-blue-600 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5" />
+        </label>
+      </div>
+
+      {enabled && children && (
+        <div className="px-5 pb-5 space-y-3 border-t border-white/5 pt-4">
+          {children}
+          <button
+            onClick={onTest}
+            disabled={testPending}
+            className="btn-secondary !text-xs !py-1.5 !px-3 mt-1"
+          >
+            {testPending ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                Versturen...
+              </span>
+            ) : '📤 Test versturen'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function NotificationSettings() {
   const [config, setConfig] = useState<NotificationConfig>({
     telegram_enabled: false,
     discord_enabled: false,
     email_enabled: false,
   })
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle')
 
   const saveMutation = useMutation({
     mutationFn: async (data: NotificationConfig) => {
@@ -32,8 +89,10 @@ export default function NotificationSettings() {
       return res.data
     },
     onSuccess: () => {
-      alert('Notification settings saved successfully!')
+      setSaveStatus('saved')
+      setTimeout(() => setSaveStatus('idle'), 3000)
     },
+    onError: () => setSaveStatus('error'),
   })
 
   const testMutation = useMutation({
@@ -48,257 +107,143 @@ export default function NotificationSettings() {
       const res = await axios.post(`${API_URL}/api/notifications/test`, payload)
       return res.data
     },
-    onSuccess: (data: any) => {
-      if (data.success) {
-        alert('✅ Test notificatie verstuurd!')
-      } else {
-        alert(`❌ Test mislukt: ${data.error}`)
-      }
-    },
-    onError: (err: any) => {
-      alert(`❌ Fout: ${err.response?.data?.detail || err.message}`)
-    },
   })
 
-  const handleSave = () => {
-    saveMutation.mutate(config)
-  }
-
-  const handleTest = (type: 'telegram' | 'discord' | 'email') => {
-    testMutation.mutate(type)
-  }
+  const up = (patch: Partial<NotificationConfig>) => setConfig((c) => ({ ...c, ...patch }))
 
   return (
-    <div className="max-w-4xl">
-      <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 mb-6">
-          Notification Settings
-        </h3>
+    <div className="max-w-2xl space-y-4">
+      {/* Telegram */}
+      <Channel
+        icon="📱"
+        title="Telegram"
+        description="Direct berichten via Telegram bot"
+        enabled={config.telegram_enabled}
+        onToggle={(v) => up({ telegram_enabled: v })}
+        onTest={() => testMutation.mutate('telegram')}
+        testPending={testMutation.isPending}
+      >
+        <div>
+          <label className="label">Bot Token</label>
+          <input
+            type="text"
+            className="input"
+            placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+            value={config.telegram_token || ''}
+            onChange={(e) => up({ telegram_token: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="label">Chat ID</label>
+          <input
+            type="text"
+            className="input"
+            placeholder="123456789"
+            value={config.telegram_chat_id || ''}
+            onChange={(e) => up({ telegram_chat_id: e.target.value })}
+          />
+        </div>
+      </Channel>
 
-        <div className="space-y-8">
-          {/* Telegram */}
+      {/* Discord */}
+      <Channel
+        icon="💬"
+        title="Discord"
+        description="Notificaties in Discord channel via webhook"
+        enabled={config.discord_enabled}
+        onToggle={(v) => up({ discord_enabled: v })}
+        onTest={() => testMutation.mutate('discord')}
+        testPending={testMutation.isPending}
+      >
+        <div>
+          <label className="label">Webhook URL</label>
+          <input
+            type="text"
+            className="input"
+            placeholder="https://discord.com/api/webhooks/..."
+            value={config.discord_webhook || ''}
+            onChange={(e) => up({ discord_webhook: e.target.value })}
+          />
+        </div>
+      </Channel>
+
+      {/* Email */}
+      <Channel
+        icon="📧"
+        title="Email"
+        description="Advertenties per e-mail ontvangen"
+        enabled={config.email_enabled}
+        onToggle={(v) => up({ email_enabled: v })}
+        onTest={() => testMutation.mutate('email')}
+        testPending={testMutation.isPending}
+      >
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">📱</span>
-                <div>
-                  <h4 className="font-semibold text-gray-900">Telegram</h4>
-                  <p className="text-xs text-gray-500">
-                    Get instant notifications via Telegram bot
-                  </p>
-                </div>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={config.telegram_enabled}
-                  onChange={(e) =>
-                    setConfig({ ...config, telegram_enabled: e.target.checked })
-                  }
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-              </label>
-            </div>
-
-            {config.telegram_enabled && (
-              <div className="pl-11 space-y-3">
-                <div>
-                  <label className="label">Bot Token</label>
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
-                    value={config.telegram_token || ''}
-                    onChange={(e) =>
-                      setConfig({ ...config, telegram_token: e.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="label">Chat ID</label>
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="123456789"
-                    value={config.telegram_chat_id || ''}
-                    onChange={(e) =>
-                      setConfig({ ...config, telegram_chat_id: e.target.value })
-                    }
-                  />
-                </div>
-                <button
-                  onClick={() => handleTest('telegram')}
-                  disabled={testMutation.isPending}
-                  className="btn-secondary text-sm"
-                >
-                  Send Test Message
-                </button>
-              </div>
-            )}
+            <label className="label">SMTP Server</label>
+            <input
+              type="text"
+              className="input"
+              placeholder="smtp.gmail.com"
+              value={config.email_smtp_server || ''}
+              onChange={(e) => up({ email_smtp_server: e.target.value })}
+            />
           </div>
-
-          {/* Discord */}
-          <div className="border-t border-gray-200 pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">💬</span>
-                <div>
-                  <h4 className="font-semibold text-gray-900">Discord</h4>
-                  <p className="text-xs text-gray-500">
-                    Post notifications to Discord webhook
-                  </p>
-                </div>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={config.discord_enabled}
-                  onChange={(e) =>
-                    setConfig({ ...config, discord_enabled: e.target.checked })
-                  }
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-              </label>
-            </div>
-
-            {config.discord_enabled && (
-              <div className="pl-11 space-y-3">
-                <div>
-                  <label className="label">Webhook URL</label>
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="https://discord.com/api/webhooks/..."
-                    value={config.discord_webhook || ''}
-                    onChange={(e) =>
-                      setConfig({ ...config, discord_webhook: e.target.value })
-                    }
-                  />
-                </div>
-                <button
-                  onClick={() => handleTest('discord')}
-                  disabled={testMutation.isPending}
-                  className="btn-secondary text-sm"
-                >
-                  Send Test Message
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Email */}
-          <div className="border-t border-gray-200 pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">📧</span>
-                <div>
-                  <h4 className="font-semibold text-gray-900">Email</h4>
-                  <p className="text-xs text-gray-500">
-                    Receive email notifications with listing details
-                  </p>
-                </div>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={config.email_enabled}
-                  onChange={(e) =>
-                    setConfig({ ...config, email_enabled: e.target.checked })
-                  }
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-              </label>
-            </div>
-
-            {config.email_enabled && (
-              <div className="pl-11 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="label">SMTP Server</label>
-                    <input
-                      type="text"
-                      className="input"
-                      placeholder="smtp.gmail.com"
-                      value={config.email_smtp_server || ''}
-                      onChange={(e) =>
-                        setConfig({ ...config, email_smtp_server: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="label">Port</label>
-                    <input
-                      type="number"
-                      className="input"
-                      placeholder="587"
-                      value={config.email_smtp_port || ''}
-                      onChange={(e) =>
-                        setConfig({ ...config, email_smtp_port: parseInt(e.target.value) })
-                      }
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="label">Username</label>
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="your-email@gmail.com"
-                    value={config.email_username || ''}
-                    onChange={(e) =>
-                      setConfig({ ...config, email_username: e.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="label">Password</label>
-                  <input
-                    type="password"
-                    className="input"
-                    placeholder="App password"
-                    value={config.email_password || ''}
-                    onChange={(e) =>
-                      setConfig({ ...config, email_password: e.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="label">Send To</label>
-                  <input
-                    type="email"
-                    className="input"
-                    placeholder="recipient@example.com"
-                    value={config.email_to || ''}
-                    onChange={(e) =>
-                      setConfig({ ...config, email_to: e.target.value })
-                    }
-                  />
-                </div>
-                <button
-                  onClick={() => handleTest('email')}
-                  disabled={testMutation.isPending}
-                  className="btn-secondary text-sm"
-                >
-                  Send Test Email
-                </button>
-              </div>
-            )}
+          <div>
+            <label className="label">Poort</label>
+            <input
+              type="number"
+              className="input"
+              placeholder="587"
+              value={config.email_smtp_port || ''}
+              onChange={(e) => up({ email_smtp_port: parseInt(e.target.value) })}
+            />
           </div>
         </div>
-
-        {/* Save Button */}
-        <div className="mt-8 pt-6 border-t border-gray-200">
-          <button
-            onClick={handleSave}
-            disabled={saveMutation.isPending}
-            className="btn-primary"
-          >
-            {saveMutation.isPending ? '💾 Saving...' : '💾 Save All Settings'}
-          </button>
+        <div>
+          <label className="label">Gebruikersnaam</label>
+          <input
+            type="text"
+            className="input"
+            placeholder="jouw-email@gmail.com"
+            value={config.email_username || ''}
+            onChange={(e) => up({ email_username: e.target.value })}
+          />
         </div>
+        <div>
+          <label className="label">Wachtwoord</label>
+          <input
+            type="password"
+            className="input"
+            placeholder="App-wachtwoord"
+            value={config.email_password || ''}
+            onChange={(e) => up({ email_password: e.target.value })}
+          />
+        </div>
+        <div>
+          <label className="label">Verstuur naar</label>
+          <input
+            type="email"
+            className="input"
+            placeholder="ontvanger@example.com"
+            value={config.email_to || ''}
+            onChange={(e) => up({ email_to: e.target.value })}
+          />
+        </div>
+      </Channel>
+
+      {/* Save */}
+      <div className="flex items-center gap-4 pt-2">
+        <button
+          onClick={() => saveMutation.mutate(config)}
+          disabled={saveMutation.isPending}
+          className="btn-primary"
+        >
+          {saveMutation.isPending
+            ? <span className="flex items-center gap-2"><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Opslaan...</span>
+            : '💾 Instellingen opslaan'}
+        </button>
+        {saveStatus === 'saved' && <span className="text-emerald-400 text-sm">✅ Opgeslagen!</span>}
+        {saveStatus === 'error' && <span className="text-red-400 text-sm">❌ Opslaan mislukt</span>}
       </div>
     </div>
   )
