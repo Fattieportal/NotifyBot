@@ -1,35 +1,32 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, Any, List
-import sys
-import os
 
-# Add web-app/api to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'web-app', 'api'))
+app = FastAPI(title="Auto Notify API")
 
-# Import the main app from web-app/api/main.py
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Import main app routes
 try:
-    from main import app as fastapi_app
-    from main import PLATFORM_SCHEMAS
-except ImportError:
-    # Fallback if import fails
-    fastapi_app = FastAPI(title="Auto Notify API")
+    from main import app as main_app
+    # Copy all routes from main_app to app
+    app.router.routes = main_app.router.routes
+except Exception as e:
+    print(f"Could not import main app: {e}")
     
-    fastapi_app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-    
-    @fastapi_app.get("/")
+    @app.get("/")
     async def root():
         return {"message": "Auto Notify API", "status": "running"}
     
-    @fastapi_app.get("/health")
+    @app.get("/health")
     async def health():
         return {"status": "healthy"}
 
-# Export for Vercel
-app = fastapi_app
+# Vercel handler
+from mangum import Mangum
+handler = Mangum(app, lifespan="off")
