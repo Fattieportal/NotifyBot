@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import axios from 'axios'
+import { API_URL } from '@/lib/api'
 
 interface NotificationConfig {
   telegram_enabled: boolean
@@ -27,7 +28,7 @@ export default function NotificationSettings() {
 
   const saveMutation = useMutation({
     mutationFn: async (data: NotificationConfig) => {
-      const res = await axios.post('/api/notifications/config', data)
+      const res = await axios.post(`${API_URL}/api/notifications/config`, data)
       return res.data
     },
     onSuccess: () => {
@@ -37,7 +38,7 @@ export default function NotificationSettings() {
 
   const testMutation = useMutation({
     mutationFn: async (type: 'telegram' | 'discord' | 'email') => {
-      const res = await axios.post('/api/notifications/test', { type })
+      const res = await axios.post(`${API_URL}/api/notifications/test`, { type })
       return res.data
     },
     onSuccess: (data) => {

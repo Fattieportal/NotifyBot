@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
+import { API_URL } from '@/lib/api'
 
 interface Listing {
   id: string
@@ -18,7 +19,7 @@ export default function RecentListings() {
   const { data: listings, isLoading } = useQuery({
     queryKey: ['listings'],
     queryFn: async () => {
-      const res = await axios.get('/api/listings?limit=50')
+      const res = await axios.get(`${API_URL}/api/listings?limit=50`)
       return res.data as Listing[]
     },
     refetchInterval: 30000,

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
+import { API_URL } from '@/lib/api'
 import StatsOverview from '@/components/StatsOverview'
 import PlatformConfigurator from '@/components/PlatformConfigurator'
 import RecentListings from '@/components/RecentListings'
@@ -10,15 +11,12 @@ import NotificationSettings from '@/components/NotificationSettings'
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'configure' | 'listings' | 'notifications'>('configure')
-  
-  // Remove trailing slash from API URL to avoid double slashes
-  const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '')
 
   // Fetch stats
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['stats'],
     queryFn: async () => {
-      const res = await axios.get(`${apiUrl}/api/stats`)
+      const res = await axios.get(`${API_URL}/api/stats`)
       return res.data
     },
     refetchInterval: 30000, // Refresh every 30 seconds

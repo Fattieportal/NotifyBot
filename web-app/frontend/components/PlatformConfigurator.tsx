@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
+import { API_URL } from '@/lib/api'
 
 interface PlatformSchema {
   name: string
@@ -29,7 +30,7 @@ export default function PlatformConfigurator() {
   const { data: schemas } = useQuery({
     queryKey: ['platforms'],
     queryFn: async () => {
-      const res = await axios.get('/api/platforms')
+      const res = await axios.get(`${API_URL}/api/platforms`)
       return res.data as Record<string, PlatformSchema>
     },
   })
@@ -37,7 +38,7 @@ export default function PlatformConfigurator() {
   // Test scrape mutation
   const testMutation = useMutation({
     mutationFn: async (data: any) => {
-      const res = await axios.post('/api/scrape/test', {
+      const res = await axios.post(`${API_URL}/api/scrape/test`, {
         platform: selectedPlatform,
         config: data,
       })
@@ -51,7 +52,7 @@ export default function PlatformConfigurator() {
   // Save configuration mutation
   const saveMutation = useMutation({
     mutationFn: async (data: any) => {
-      const res = await axios.post('/api/config', {
+      const res = await axios.post(`${API_URL}/api/config`, {
         platform: selectedPlatform,
         config: data,
         enabled: true,
