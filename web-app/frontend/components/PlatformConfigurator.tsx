@@ -31,6 +31,8 @@ export default function PlatformConfigurator() {
     queryKey: ['platforms'],
     queryFn: async () => {
       const res = await axios.get(`${API_URL}/api/platforms`)
+      console.log('API Response:', res.data)
+      console.log('Platforms:', res.data.platforms)
       return res.data.platforms as Record<string, PlatformSchema>
     },
   })
@@ -66,6 +68,11 @@ export default function PlatformConfigurator() {
   })
 
   const currentSchema = schemas?.[selectedPlatform]
+  
+  console.log('Current schemas:', schemas)
+  console.log('Selected platform:', selectedPlatform)
+  console.log('Current schema:', currentSchema)
+  console.log('Current schema fields:', currentSchema?.fields)
 
   const handleFieldChange = (fieldName: string, value: any) => {
     setFormData((prev) => ({ ...prev, [fieldName]: value }))
