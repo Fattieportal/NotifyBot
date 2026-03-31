@@ -361,17 +361,66 @@ async def scrape_marktplaats(criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
         if pictures:
             image_url = pictures[0].get("mediumUrl", "") or pictures[0].get("extraExtraLargeUrl", "")
 
+        # Extraheer year en mileage uit attributes
+        year = None
+        mileage = None
+        for attr in item.get("attributes", []):
+            key = attr.get("key", "")
+            val = attr.get("value", "")
+            if key == "constructionYear":
+                try:
+                    year = int(val)
+                except (ValueError, TypeError):
+                    pass
+            elif key == "mileage":
+                try:
+                    mileage = int(str(val).replace(".", "").replace(",", "").replace(" ", ""))
+                except (ValueError, TypeError):
+                    pass
+
         listings.append({
             "listing_id": listing_id,
             "platform": "marktplaats",
             "title": title,
             "price": price,
+            "year": year,
+            "mileage": mileage,
             "url": url,
             "location": location,
             "image_url": image_url,
         })
 
     return listings
+
+
+def passes_filter(listing: Dict[str, Any], config: Dict[str, Any]) -> bool:
+    """Controleer of een listing voldoet aan alle ingestelde criteria."""
+    price = listing.get("price") or 0
+    year = listing.get("year")
+    mileage = listing.get("mileage")
+
+    # Prijs filter — sla advertenties zonder prijs (0 = bieden) over als price_max ingesteld is
+    if config.get("price_max"):
+        if price == 0 or price > float(config["price_max"]):
+            return False
+    if config.get("price_min"):
+        if price == 0 or price < float(config["price_min"]):
+            return False
+
+    # Bouwjaar filter
+    if config.get("year_min") and year is not None:
+        if year < int(config["year_min"]):
+            return False
+    if config.get("year_max") and year is not None:
+        if year > int(config["year_max"]):
+            return False
+
+    # Kilometerstand filter
+    if config.get("mileage_max") and mileage is not None:
+        if mileage > int(config["mileage_max"]):
+            return False
+
+    return True
 
 
 async def send_telegram_notification(token: str, chat_id: str, listing: Dict[str, Any]):
@@ -441,6 +490,10 @@ async def cron_scrape(request: Request):
                     if not listing_id:
                         continue
 
+                    # Client-side filter (API filtert niet altijd correct)
+                    if not passes_filter(listing, config):
+                        continue
+
                     # Check of advertentie al bekend is in Supabase
                     existing = sb.table("listings").select("id").eq("listing_id", listing_id).execute()
                     if existing.data:
@@ -452,6 +505,8 @@ async def cron_scrape(request: Request):
                         "platform": "marktplaats",
                         "title": listing.get("title", ""),
                         "price": listing.get("price"),
+                        "year": listing.get("year"),
+                        "mileage": listing.get("mileage"),
                         "url": listing.get("url", ""),
                         "location": listing.get("location", ""),
                         "image_url": listing.get("image_url", ""),
