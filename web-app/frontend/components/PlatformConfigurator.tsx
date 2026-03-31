@@ -40,10 +40,13 @@ export default function PlatformConfigurator() {
       // If it's an array, convert to object with platform keys
       if (Array.isArray(platformData)) {
         console.log('Converting array to object...')
+        console.log('Array items:', platformData)
         const obj: Record<string, PlatformSchema> = {}
         platformData.forEach((platform: any, index: number) => {
+          console.log(`Platform ${index}:`, platform)
           // Try to get key from platform name or use index
-          const key = platform.name?.toLowerCase().replace(/\s+/g, '_') || `platform_${index}`
+          const key = platform.name?.toLowerCase().replace(/\s+/g, '_').replace(/\./g, '') || `platform_${index}`
+          console.log(`Generated key: ${key}`)
           obj[key] = platform
         })
         platformData = obj
