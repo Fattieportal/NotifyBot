@@ -84,13 +84,53 @@ async def root():
     return {"message": "Auto Notify Bot API", "version": "1.0.0", "status": "running"}
 
 
+FALLBACK_PLATFORMS = [
+    {"id": "marktplaats", "name": "Marktplaats", "enabled": True, "config": {}},
+    {"id": "autoscout24", "name": "AutoScout24", "enabled": True, "config": {}},
+    {"id": "mobile_de", "name": "Mobile.de", "enabled": False, "config": {}},
+    {"id": "facebook", "name": "Facebook Marketplace", "enabled": False, "config": {}},
+    {"id": "ebay_kleinanzeigen", "name": "eBay Kleinanzeigen", "enabled": False, "config": {}},
+]
+
+
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_ANON_KEY")
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "supabase_url_set": bool(url),
+        "supabase_key_set": bool(key),
+    }
+
+
+@app.get("/api/debug")
+async def debug():
+    """Debug endpoint to check environment variables"""
+    url = os.environ.get("SUPABASE_URL", "")
+    key = os.environ.get("SUPABASE_ANON_KEY", "")
+    return {
+        "supabase_url_set": bool(url),
+        "supabase_url_prefix": url[:30] if url else None,
+        "supabase_key_set": bool(key),
+        "env_keys": [k for k in os.environ.keys() if "SUPA" in k.upper() or "DATABASE" in k.upper()],
+    }
 
 
 @app.get("/api/platforms")
 async def get_platforms():
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_ANON_KEY")
+
+    # If Supabase not configured, return fallback with fields
+    if not url or not key:
+        platforms = [
+            {**p, "fields": PLATFORM_FIELDS.get(p["id"], [])}
+            for p in FALLBACK_PLATFORMS
+        ]
+        return {"platforms": platforms, "source": "fallback"}
+
     try:
         sb = get_supabase()
         result = sb.table("platforms").select("*").execute()
@@ -104,13 +144,30 @@ async def get_platforms():
                 "config": row.get("config", {}),
                 "fields": PLATFORM_FIELDS.get(platform_id, []),
             })
-        return {"platforms": platforms}
+        return {"platforms": platforms, "source": "supabase"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # On Supabase error, return fallback so UI still works
+        platforms = [
+            {**p, "fields": PLATFORM_FIELDS.get(p["id"], [])}
+            for p in FALLBACK_PLATFORMS
+        ]
+        return {"platforms": platforms, "source": "fallback", "error": str(e)}
 
 
 @app.get("/api/stats")
 async def get_stats():
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_ANON_KEY")
+
+    if not url or not key:
+        return {
+            "total_listings": 0,
+            "new_today": 0,
+            "platforms_active": 2,
+            "last_scan": None,
+            "source": "fallback",
+        }
+
     try:
         sb = get_supabase()
 
@@ -132,9 +189,17 @@ async def get_stats():
             "new_today": new_today,
             "platforms_active": platforms_active,
             "last_scan": last_scan,
+            "source": "supabase",
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "total_listings": 0,
+            "new_today": 0,
+            "platforms_active": 0,
+            "last_scan": None,
+            "source": "fallback",
+            "error": str(e),
+        }
 
 
 @app.get("/api/listings")
