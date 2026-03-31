@@ -82,7 +82,7 @@ PLATFORM_FIELDS = {
 
 @app.get("/")
 async def root():
-    return {"message": "Auto Notify Bot API", "version": "1.0.0", "status": "running"}
+    return {"message": "Auto Notify Bot API", "version": "2.0.0-FILTER-FIX", "status": "running"}
 
 
 FALLBACK_PLATFORMS = [
@@ -112,6 +112,7 @@ async def debug():
     url = os.environ.get("SUPABASE_URL", "")
     key = os.environ.get("SUPABASE_ANON_KEY", "")
     return {
+        "version": "b67ed24",
         "supabase_url_set": bool(url),
         "supabase_url_prefix": url[:30] if url else None,
         "supabase_key_set": bool(key),
@@ -361,17 +362,426 @@ async def scrape_marktplaats(criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
         if pictures:
             image_url = pictures[0].get("mediumUrl", "") or pictures[0].get("extraExtraLargeUrl", "")
 
+        # Extraheer year en mileage uit attributes
+        year = None
+        mileage = None
+        for attr in item.get("attributes", []):
+            key = attr.get("key", "")
+            val = attr.get("value", "")
+            if key == "constructionYear":
+                try:
+                    year = int(val)
+                except (ValueError, TypeError):
+                    pass
+            elif key == "mileage":
+                try:
+                    mileage = int(str(val).replace(".", "").replace(",", "").replace(" ", ""))
+                except (ValueError, TypeError):
+                    pass
+
         listings.append({
             "listing_id": listing_id,
             "platform": "marktplaats",
             "title": title,
             "price": price,
+            "year": year,
+            "mileage": mileage,
             "url": url,
             "location": location,
             "image_url": image_url,
         })
 
     return listings
+
+
+async def scrape_autoscout24(criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Scrape AutoScout24 via hun search API"""
+    params = {
+        "atype": "C",       # Cars
+        "desc": "0",
+        "sort": "age",
+        "size": "20",
+        "page": "1",
+        "cy": "NL",
+    }
+    if criteria.get("make"):
+        params["mmvmk0"] = criteria["make"].upper()
+    if criteria.get("model"):
+        params["mmvmo0"] = criteria["model"]
+    if criteria.get("price_min"):
+        params["pricefrom"] = str(int(criteria["price_min"]))
+    if criteria.get("price_max"):
+        params["priceto"] = str(int(criteria["price_max"]))
+    if criteria.get("year_min"):
+        params["fregfrom"] = str(criteria["year_min"])
+    if criteria.get("year_max"):
+        params["fregto"] = str(criteria["year_max"])
+    if criteria.get("mileage_max"):
+        params["kmto"] = str(int(criteria["mileage_max"]))
+    if criteria.get("fuel_type"):
+        fuel_map = {"Diesel": "D", "Petrol": "B", "Electric": "E", "Hybrid": "H"}
+        params["fuel"] = fuel_map.get(criteria["fuel_type"], "")
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.get(
+            "https://www.autoscout24.nl/lst",
+            params=params,
+            headers=headers,
+        )
+        resp.raise_for_status()
+
+    from bs4 import BeautifulSoup
+    import re, json as _json
+    soup = BeautifulSoup(resp.text, "lxml")
+
+    listings = []
+    # AutoScout24 embeds listing data in a __NEXT_DATA__ script tag
+    script = soup.find("script", {"id": "__NEXT_DATA__"})
+    if script:
+        try:
+            next_data = _json.loads(script.string)
+            articles = (
+                next_data.get("props", {})
+                .get("pageProps", {})
+                .get("listings", [])
+            )
+            for item in articles:
+                vehicle = item.get("vehicle", {})
+                listing_id = str(item.get("id", ""))
+                title = f"{vehicle.get('make', '')} {vehicle.get('model', '')} {vehicle.get('modelVersionInput', '')}".strip()
+                price = item.get("pricing", {}).get("price", {}).get("value", 0) or 0
+                year = vehicle.get("firstRegistration", {}).get("year") or vehicle.get("constructionYear")
+                mileage_raw = vehicle.get("mileage", {}).get("value")
+                mileage = int(mileage_raw) if mileage_raw else None
+                url = "https://www.autoscout24.nl/aanbod/" + listing_id
+                location_data = item.get("location", {})
+                location = location_data.get("city", "") or location_data.get("countryCode", "")
+                images = item.get("images", [])
+                image_url = images[0].get("url", "") if images else ""
+
+                if not listing_id:
+                    continue
+                listings.append({
+                    "listing_id": f"as24_{listing_id}",
+                    "platform": "autoscout24",
+                    "title": title,
+                    "price": float(price),
+                    "year": int(year) if year else None,
+                    "mileage": mileage,
+                    "url": url,
+                    "location": location,
+                    "image_url": image_url,
+                })
+        except Exception:
+            pass
+
+    return listings
+
+
+async def scrape_ebay_kleinanzeigen(criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Scrape eBay Kleinanzeigen (Kleinanzeigen.de) via HTML"""
+    from bs4 import BeautifulSoup
+    import re
+
+    query = criteria.get("keywords", "auto")
+    base_url = "https://www.kleinanzeigen.de/s-autos"
+    search_url = f"{base_url}/{query.replace(' ', '-')}/k0c216"
+
+    params = {}
+    if criteria.get("price_min"):
+        params["minPrice"] = str(int(criteria["price_min"]))
+    if criteria.get("price_max"):
+        params["maxPrice"] = str(int(criteria["price_max"]))
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "de-DE,de;q=0.9",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+        resp = await client.get(search_url, params=params, headers=headers)
+        resp.raise_for_status()
+
+    soup = BeautifulSoup(resp.text, "lxml")
+    listings = []
+
+    for article in soup.select("article.aditem")[:30]:
+        listing_id = article.get("data-adid", "")
+        if not listing_id:
+            continue
+
+        title_el = article.select_one(".ellipsis")
+        title = title_el.get_text(strip=True) if title_el else ""
+
+        price_el = article.select_one(".aditem-main--middle--price-shipping--price")
+        price = 0.0
+        if price_el:
+            price_text = price_el.get_text(strip=True).replace(".", "").replace(",", ".").replace("€", "").strip()
+            try:
+                price = float(re.sub(r"[^\d.]", "", price_text))
+            except ValueError:
+                price = 0.0
+
+        link_el = article.select_one("a.ellipsis") or article.select_one("h2 a")
+        url = ("https://www.kleinanzeigen.de" + link_el["href"]) if link_el and link_el.get("href") else ""
+
+        location_el = article.select_one(".aditem-main--top--left")
+        location = location_el.get_text(strip=True) if location_el else ""
+
+        img_el = article.select_one("img")
+        image_url = img_el.get("src", "") if img_el else ""
+
+        listings.append({
+            "listing_id": f"ebay_{listing_id}",
+            "platform": "ebay_kleinanzeigen",
+            "title": title,
+            "price": price,
+            "year": None,
+            "mileage": None,
+            "url": url,
+            "location": location,
+            "image_url": image_url,
+        })
+
+    return listings
+
+
+async def scrape_mobile_de(criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Scrape Mobile.de via hun search API"""
+    from bs4 import BeautifulSoup
+    import re, json as _json
+
+    params = {
+        "isSearchRequest": "true",
+        "scopeId": "C",
+        "sortOption.sortBy": "creationTime",
+        "sortOption.sortOrder": "DESCENDING",
+        "pageNumber": "1",
+        "pageSize": "25",
+    }
+    if criteria.get("make"):
+        params["makeModelVariant1.makeId"] = criteria["make"].upper()
+    if criteria.get("model"):
+        params["makeModelVariant1.modelDescription"] = criteria["model"]
+    if criteria.get("price_min"):
+        params["minPrice"] = str(int(criteria["price_min"]))
+    if criteria.get("price_max"):
+        params["maxPrice"] = str(int(criteria["price_max"]))
+    if criteria.get("year_min"):
+        params["minFirstRegistrationDate"] = f"{criteria['year_min']}-01-01"
+    if criteria.get("mileage_max"):
+        params["maxMileage"] = str(int(criteria["mileage_max"]))
+    if criteria.get("zip_code"):
+        params["zipcode"] = criteria["zip_code"]
+    if criteria.get("radius_km"):
+        params["radius"] = str(int(criteria["radius_km"]))
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+        "Accept-Language": "de-DE,de;q=0.9",
+    }
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.get(
+            "https://suchen.mobile.de/fahrzeuge/search.html",
+            params=params,
+            headers=headers,
+        )
+        resp.raise_for_status()
+
+    soup = BeautifulSoup(resp.text, "lxml")
+    listings = []
+
+    for article in soup.select("div.cBox-body--resultitem")[:25]:
+        link_el = article.select_one("a.link--muted")
+        if not link_el:
+            continue
+        href = link_el.get("href", "")
+        listing_id_match = re.search(r"id=(\d+)", href)
+        listing_id = listing_id_match.group(1) if listing_id_match else ""
+        if not listing_id:
+            continue
+
+        title_el = article.select_one("h2.headline-block") or article.select_one(".headline-block")
+        title = title_el.get_text(strip=True) if title_el else ""
+
+        price_el = article.select_one(".price-block") or article.select_one("span.h3")
+        price = 0.0
+        if price_el:
+            price_text = price_el.get_text(strip=True).replace(".", "").replace(",", ".").replace("€", "").strip()
+            try:
+                price = float(re.sub(r"[^\d.]", "", price_text))
+            except ValueError:
+                price = 0.0
+
+        url = href if href.startswith("http") else "https://suchen.mobile.de" + href
+
+        # Year from "EZ" (Erstzulassung) field
+        year = None
+        ez_el = article.select_one(".rbt-regDate") or article.find(string=re.compile(r"EZ \d{2}/\d{4}"))
+        if ez_el:
+            year_match = re.search(r"(\d{4})", str(ez_el))
+            if year_match:
+                year = int(year_match.group(1))
+
+        # Mileage from km field
+        mileage = None
+        km_el = article.select_one(".rbt-mileage") or article.find(string=re.compile(r"[\d\.]+\s*km"))
+        if km_el:
+            km_match = re.search(r"([\d\.]+)\s*km", str(km_el))
+            if km_match:
+                try:
+                    mileage = int(km_match.group(1).replace(".", ""))
+                except ValueError:
+                    pass
+
+        location_el = article.select_one(".seller-address") or article.select_one(".rbt-seller-info")
+        location = location_el.get_text(strip=True) if location_el else ""
+
+        img_el = article.select_one("img")
+        image_url = img_el.get("src", "") if img_el else ""
+
+        listings.append({
+            "listing_id": f"mobile_{listing_id}",
+            "platform": "mobile_de",
+            "title": title,
+            "price": price,
+            "year": year,
+            "mileage": mileage,
+            "url": url,
+            "location": location,
+            "image_url": image_url,
+        })
+
+    return listings
+
+
+async def scrape_facebook_marketplace(criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Scrape Facebook Marketplace via Apify API (apify/facebook-marketplace-scraper)"""
+    apify_token = os.environ.get("APIFY_API_TOKEN")
+    if not apify_token:
+        raise Exception("APIFY_API_TOKEN niet ingesteld in Vercel env vars")
+
+    keywords = criteria.get("keywords", "auto")
+    location = criteria.get("location", "netherlands")
+    price_max = criteria.get("price_max")
+    price_min = criteria.get("price_min")
+
+    # Bouw de Facebook Marketplace search URL
+    search_url = f"https://www.facebook.com/marketplace/{location.lower().replace(' ', '')}/search/?query={keywords.replace(' ', '%20')}"
+    if price_max:
+        search_url += f"&maxPrice={int(price_max)}"
+    if price_min:
+        search_url += f"&minPrice={int(price_min)}"
+
+    run_input = {
+        "startUrls": [{"url": search_url}],
+        "maxItems": 30,
+        "proxy": {"useApifyProxy": True},
+    }
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        # Start de Apify actor run
+        start_resp = await client.post(
+            "https://api.apify.com/v2/acts/apify~facebook-marketplace-scraper/runs",
+            params={"token": apify_token},
+            json=run_input,
+        )
+        start_resp.raise_for_status()
+        run_data = start_resp.json()
+        run_id = run_data["data"]["id"]
+
+        # Poll tot de run klaar is (max 90 seconden)
+        for _ in range(18):
+            await __import__("asyncio").sleep(5)
+            status_resp = await client.get(
+                f"https://api.apify.com/v2/acts/apify~facebook-marketplace-scraper/runs/{run_id}",
+                params={"token": apify_token},
+            )
+            status_resp.raise_for_status()
+            status = status_resp.json()["data"]["status"]
+            if status == "SUCCEEDED":
+                break
+            elif status in ("FAILED", "ABORTED", "TIMED-OUT"):
+                raise Exception(f"Apify run mislukt: {status}")
+
+        # Haal resultaten op
+        dataset_id = status_resp.json()["data"]["defaultDatasetId"]
+        items_resp = await client.get(
+            f"https://api.apify.com/v2/datasets/{dataset_id}/items",
+            params={"token": apify_token, "format": "json"},
+        )
+        items_resp.raise_for_status()
+        items = items_resp.json()
+
+    listings = []
+    for item in items:
+        listing_id = str(item.get("id", ""))
+        if not listing_id:
+            continue
+
+        title = item.get("marketplace_listing_title") or item.get("custom_title") or ""
+        price_raw = item.get("listing_price", {}).get("amount", "0") or "0"
+        try:
+            price = float(str(price_raw).replace(",", "."))
+        except ValueError:
+            price = 0.0
+
+        url = item.get("listingUrl") or f"https://www.facebook.com/marketplace/item/{listing_id}"
+        location_data = item.get("location", {}).get("reverse_geocode", {})
+        loc = location_data.get("city", "") or location_data.get("state", "")
+        image = item.get("primary_listing_photo", {}).get("image", {}).get("uri", "")
+
+        listings.append({
+            "listing_id": f"fb_{listing_id}",
+            "platform": "facebook",
+            "title": title,
+            "price": price,
+            "year": None,   # Facebook Marketplace geeft geen bouwjaar terug
+            "mileage": None,
+            "url": url,
+            "location": loc,
+            "image_url": image,
+        })
+
+    return listings
+
+
+def passes_filter(listing: Dict[str, Any], config: Dict[str, Any]) -> bool:
+    """Controleer of een listing voldoet aan alle ingestelde criteria."""
+    price = listing.get("price") or 0
+    year = listing.get("year")
+    mileage = listing.get("mileage")
+
+    # Prijs filter — sla advertenties zonder prijs (0 = bieden) over als price_max ingesteld is
+    if config.get("price_max"):
+        if price == 0 or price > float(config["price_max"]):
+            return False
+    if config.get("price_min"):
+        if price == 0 or price < float(config["price_min"]):
+            return False
+
+    # Bouwjaar filter
+    if config.get("year_min") and year is not None:
+        if year < int(config["year_min"]):
+            return False
+    if config.get("year_max") and year is not None:
+        if year > int(config["year_max"]):
+            return False
+
+    # Kilometerstand filter
+    if config.get("mileage_max") and mileage is not None:
+        if mileage > int(config["mileage_max"]):
+            return False
+
+    return True
 
 
 async def send_telegram_notification(token: str, chat_id: str, listing: Dict[str, Any]):
@@ -432,36 +842,54 @@ async def cron_scrape(request: Request):
             continue  # Geen criteria ingesteld, overslaan
 
         try:
+            # Kies de juiste scraper op basis van platform_id
             if platform_id == "marktplaats":
                 listings = await scrape_marktplaats(config)
-                results["scraped"] += len(listings)
+            elif platform_id == "autoscout24":
+                listings = await scrape_autoscout24(config)
+            elif platform_id == "ebay_kleinanzeigen":
+                listings = await scrape_ebay_kleinanzeigen(config)
+            elif platform_id == "mobile_de":
+                listings = await scrape_mobile_de(config)
+            elif platform_id == "facebook":
+                listings = await scrape_facebook_marketplace(config)
+            else:
+                continue  # Onbekend platform, overslaan
 
-                for listing in listings:
-                    listing_id = listing["listing_id"]
-                    if not listing_id:
-                        continue
+            results["scraped"] += len(listings)
 
-                    # Check of advertentie al bekend is in Supabase
-                    existing = sb.table("listings").select("id").eq("listing_id", listing_id).execute()
-                    if existing.data:
-                        continue  # Al bekend, overslaan
+            for listing in listings:
+                listing_id = listing["listing_id"]
+                if not listing_id:
+                    continue
 
-                    # Sla op in Supabase
-                    sb.table("listings").insert({
-                        "listing_id": listing_id,
-                        "platform": "marktplaats",
-                        "title": listing.get("title", ""),
-                        "price": listing.get("price"),
-                        "url": listing.get("url", ""),
-                        "location": listing.get("location", ""),
-                        "image_url": listing.get("image_url", ""),
-                        "created_at": datetime.now().isoformat(),
-                    }).execute()
-                    results["new"] += 1
+                # Client-side filter
+                if not passes_filter(listing, config):
+                    continue
 
-                    # Stuur Telegram notificatie
-                    await send_telegram_notification(tg_token, tg_chat_id, listing)
-                    results["notified"] += 1
+                # Check of advertentie al bekend is in Supabase
+                existing = sb.table("listings").select("id").eq("listing_id", listing_id).execute()
+                if existing.data:
+                    continue  # Al bekend, overslaan
+
+                # Sla op in Supabase
+                sb.table("listings").insert({
+                    "listing_id": listing_id,
+                    "platform": platform_id,
+                    "title": listing.get("title", ""),
+                    "price": listing.get("price"),
+                    "year": listing.get("year"),
+                    "mileage": listing.get("mileage"),
+                    "url": listing.get("url", ""),
+                    "location": listing.get("location", ""),
+                    "image_url": listing.get("image_url", ""),
+                    "created_at": datetime.now().isoformat(),
+                }).execute()
+                results["new"] += 1
+
+                # Stuur Telegram notificatie
+                await send_telegram_notification(tg_token, tg_chat_id, listing)
+                results["notified"] += 1
 
         except Exception as e:
             results["errors"].append(f"{platform_id}: {str(e)}")
