@@ -814,8 +814,8 @@ async def cron_scrape(request: Request):
     results = {"scraped": 0, "new": 0, "notified": 0, "errors": []}
 
     # Haal Telegram credentials op uit env vars
-    tg_token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    tg_chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    tg_token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    tg_chat_id = (os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
 
     if not tg_token or not tg_chat_id:
         return {"success": False, "error": "TELEGRAM_BOT_TOKEN en TELEGRAM_CHAT_ID niet ingesteld in Vercel env vars"}
