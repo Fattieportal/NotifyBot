@@ -1,7 +1,7 @@
 ﻿from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any, Optional, List
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 import os
 import httpx
 from mangum import Mangum
@@ -808,8 +808,9 @@ async def send_telegram_notification(token: str, chat_id: str, listing: Dict[str
 @app.post("/api/cron/scrape")
 async def cron_scrape(request: Request):
     """
-    Vercel cron job - draait elke 15 minuten automatisch.
+    Vercel cron job - draait elke minuut automatisch.
     Scrapet actieve platforms en stuurt Telegram notificaties voor nieuwe advertenties.
+    Alleen advertenties die NIEUWER zijn dan de eerste scrape-run worden gemeld.
     """
     results = {"scraped": 0, "new": 0, "notified": 0, "errors": []}
 
@@ -829,6 +830,17 @@ async def cron_scrape(request: Request):
 
     try:
         sb = get_supabase()
+
+        # Haal of sla de scraper start tijd op
+        # De eerste keer dat de cron draait slaan we de huidige tijd op als "start".
+        # Alle advertenties die al bestonden vóór dit moment worden NIET gemeld.
+        state_result = sb.table("scraper_state").select("value").eq("key", "first_run_at").execute()
+        if state_result.data:
+            first_run_at = state_result.data[0]["value"]
+        else:
+            first_run_at = datetime.now(timezone.utc).isoformat()
+            sb.table("scraper_state").insert({"key": "first_run_at", "value": first_run_at}).execute()
+
         platforms_result = sb.table("platforms").select("*").eq("enabled", True).execute()
         platforms = platforms_result.data
     except Exception as e:
@@ -873,6 +885,7 @@ async def cron_scrape(request: Request):
                     continue  # Al bekend, overslaan
 
                 # Sla op in Supabase
+                now = datetime.now(timezone.utc).isoformat()
                 sb.table("listings").insert({
                     "listing_id": listing_id,
                     "platform": platform_id,
@@ -883,13 +896,15 @@ async def cron_scrape(request: Request):
                     "url": listing.get("url", ""),
                     "location": listing.get("location", ""),
                     "image_url": listing.get("image_url", ""),
-                    "created_at": datetime.now().isoformat(),
+                    "created_at": now,
                 }).execute()
-                results["new"] += 1
 
-                # Stuur Telegram notificatie
-                await send_telegram_notification(tg_token, tg_chat_id, listing)
-                results["notified"] += 1
+                # Stuur ALLEEN notificatie als listing nieuwer is dan eerste run
+                if now >= first_run_at:
+                    await send_telegram_notification(tg_token, tg_chat_id, listing)
+                    results["notified"] += 1
+
+                results["new"] += 1
 
         except Exception as e:
             results["errors"].append(f"{platform_id}: {str(e)}")
