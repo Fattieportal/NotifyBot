@@ -664,7 +664,12 @@ async def scrape_mobile_de(criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 async def scrape_facebook_marketplace(criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Scrape Facebook Marketplace via Apify API (apify/facebook-marketplace-scraper)"""
+    """Facebook Marketplace wordt afgehandeld door de VPS Playwright scraper.
+    Die schrijft listings rechtstreeks naar Supabase en stuurt zelf Telegram notificaties.
+    Vercel hoeft hier niets te doen — return leeg zodat er geen dubbele notificaties komen."""
+    return []
+
+    # --- Onderstaande Apify code is uitgeschakeld ---
     apify_token = os.environ.get("APIFY_API_TOKEN")
     if not apify_token:
         raise Exception("APIFY_API_TOKEN niet ingesteld in Vercel env vars")
@@ -853,6 +858,10 @@ async def cron_scrape(request: Request):
         if not config:
             continue  # Geen criteria ingesteld, overslaan
 
+        # Facebook wordt volledig afgehandeld door de VPS scraper — overslaan
+        if platform_id == "facebook":
+            continue
+
         try:
             # Kies de juiste scraper op basis van platform_id
             if platform_id == "marktplaats":
@@ -863,8 +872,6 @@ async def cron_scrape(request: Request):
                 listings = await scrape_ebay_kleinanzeigen(config)
             elif platform_id == "mobile_de":
                 listings = await scrape_mobile_de(config)
-            elif platform_id == "facebook":
-                listings = await scrape_facebook_marketplace(config)
             else:
                 continue  # Onbekend platform, overslaan
 
