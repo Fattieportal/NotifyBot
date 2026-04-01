@@ -12,7 +12,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -103,7 +103,7 @@ async def save_listing(listing: dict):
         "url": listing.get("url", ""),
         "location": listing.get("location", ""),
         "image_url": listing.get("image_url", ""),
-        "created_at": datetime.now().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }).execute()
 
 
@@ -154,8 +154,8 @@ async def scrape(page, config: dict) -> list:
     price_max = config.get("price_max")
     price_min = config.get("price_min")
 
-    # Bouw de zoek-URL
-    url = f"https://www.facebook.com/marketplace/{location.lower().replace(' ', '')}/search?query={keywords.replace(' ', '%20')}&exact=false"
+    # Bouw de zoek-URL — sorteer op nieuwste eerst
+    url = f"https://www.facebook.com/marketplace/{location.lower().replace(' ', '')}/search?query={keywords.replace(' ', '%20')}&exact=false&sortBy=creation_time_descend"
     if price_max:
         url += f"&maxPrice={int(price_max)}"
     if price_min:
@@ -305,6 +305,8 @@ async def run_scraper():
 
     # Verwerk nieuwe listings
     new_count = 0
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
     for listing in listings:
         if not passes_filter(listing, config):
             continue
