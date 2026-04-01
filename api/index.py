@@ -180,8 +180,8 @@ async def get_stats():
         today_result = sb.table("listings").select("id", count="exact").gte("created_at", today).execute()
         new_today = today_result.count or 0
 
-        active_result = sb.table("platforms").select("id", count="exact").eq("enabled", True).execute()
-        platforms_active = active_result.count or 0
+        active_result = sb.table("platforms").select("id,config").eq("enabled", True).execute()
+        platforms_active = sum(1 for p in active_result.data if p.get("config"))
 
         last_result = sb.table("listings").select("created_at").order("created_at", desc=True).limit(1).execute()
         last_scan = last_result.data[0]["created_at"] if last_result.data else None
