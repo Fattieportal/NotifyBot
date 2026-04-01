@@ -311,10 +311,10 @@ async def scrape_marktplaats(criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Scrape Marktplaats via hun interne search API"""
     params = {
         "l1CategoryId": "91",   # Auto's
-        "sortBy": "SORT_INDEX",
+        "sortBy": "DATE",
         "sortOrder": "DECREASING",
         "searchInTitleAndDescription": "true",
-        "limit": "30",
+        "limit": "100",
     }
     if criteria.get("keywords"):
         params["query"] = criteria["keywords"]
@@ -398,9 +398,9 @@ async def scrape_autoscout24(criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Scrape AutoScout24 via hun search API"""
     params = {
         "atype": "C",       # Cars
-        "desc": "0",
+        "desc": "1",        # nieuwste eerst
         "sort": "age",
-        "size": "20",
+        "size": "100",
         "page": "1",
         "cy": "NL",
     }
